@@ -1,0 +1,43 @@
+OUSSAMA BOUKHACHEM
+Junior DevOps Engineer -- Rome, Italy
+boukhachem.o@gmail.com | github.com/oussama-boukhachem
+
+You are reading this text because it was extracted from a QR code
+inside a video frame, which was downloaded from YouTube.
+
+Nothing about that is sensible. That was the point.
+
+------------------------------------------------------------------
+SUMMARY
+------------------------------------------------------------------
+Junior DevOps engineer focused on Linux, Docker, CI/CD pipelines and
+infrastructure automation. I like building small things that work
+reliably and large things that fail loudly instead of silently.
+
+------------------------------------------------------------------
+EXPERIENCE
+------------------------------------------------------------------
+TrendDC -- DevOps Intern
+  * Diagnosed and fixed recurring MySQL OOM kills on a 2 GB WordPress
+    droplet: added swap, capped Apache prefork, tuned InnoDB.
+  * Built per-commit preview environments deployed over SSH from GitHub
+    Actions, with automatic reaping of stale stacks.
+
+Freelance / Self-directed
+  * Self-hosted monitoring (Prometheus + Grafana + Alertmanager) on
+    Docker hosts.
+  * OpenClaw agent tooling: local RAG with Ollama, voice I/O pipeline,
+    security scanner with an allowlist guardrail.
+
+------------------------------------------------------------------
+SKILLS
+------------------------------------------------------------------
+Linux | Docker | Kubernetes | Ansible | Terraform | GitHub Actions
+Nginx | PostgreSQL | Prometheus | Grafana | Bash | Python | Go
+
+------------------------------------------------------------------
+NOTE
+------------------------------------------------------------------
+If this file came out of a video intact, the checksum matched and the
+AES-256-GCM tag verified, then the QR stream survived YouTube's
+transcoder. Which is, honestly, a little absurd. 

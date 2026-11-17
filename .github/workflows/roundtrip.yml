@@ -1,0 +1,66 @@
+name: roundtrip
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  roundtrip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: System deps (zbar + ffmpeg)
+        run: sudo apt-get update && sudo apt-get install -y libzbar0 ffmpeg
+
+      - name: Python deps
+        run: pip install -r requirements.txt
+
+      - name: Encode the sample CV
+        run: |
+          python src/make_video.py \
+            --in samples/cv.txt \
+            --out out/cv-video.mp4 \
+            --password ci-test-password
+
+      - name: Decode it back
+        run: |
+          python src/extract.py \
+            --in out/cv-video.mp4 \
+            --out out/restored.txt \
+            --password ci-test-password
+
+      - name: Byte-identical?
+        run: cmp samples/cv.txt out/restored.txt
+
+      - name: Survive a simulated YouTube transcode
+        run: |
+          ./tools/simulate-youtube.sh out/cv-video.mp4 out/youtube-sim.mp4
+          python src/extract.py \
+            --in out/youtube-sim.mp4 \
+            --out out/restored-sim.txt \
+            --password ci-test-password
+          cmp samples/cv.txt out/restored-sim.txt
+
+      - name: Wrong password must fail
+        run: |
+          if python src/extract.py --in out/cv-video.mp4 \
+               --out out/nope.txt --password wrong-password; then
+            echo "decoder accepted a wrong password -- that is a real bug"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: roundtrip-output
+          path: |
+            out/*.mp4
+            out/*.json
+            out/*.txt
