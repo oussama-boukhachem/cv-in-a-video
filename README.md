@@ -14,20 +14,37 @@ file -> zlib -> AES-256-GCM -> chunk -> base85 -> QR code -> one video frame
         every frame is independently decodable  <-------------+
 ```
 
-1. Compress, then encrypt with AES-256-GCM. Key comes from your password via
+1. Compress, then encrypt with AES-256-GCM. The key comes from your password via
    PBKDF2-SHA256 (200k iterations). The video is a public envelope; the password
    is the lock.
 2. Cut the ciphertext into chunks sized to fit a QR symbol.
 3. One frame per chunk: the chunk index in 5 ASCII digits, then the chunk in
    base85. Both go inside a single QR code, with a human-readable caption.
-4. Encode as **H.264 all-intra** (`-g 1`, CRF 18). Every frame stands alone,
-   so YouTube's transcoder cannot smear data across frames.
+4. Encode as **H.264 all-intra** (`-g 1`, CRF 18). Every frame stands alone, so
+   YouTube's transcoder cannot smear data across frames.
 5. Upload. Download. Run the decoder. It reads frames with OpenCV, symbols with
-   zbar, rebuilds the chunk order, verifies SHA-256 on the ciphertext, decrypts,
+   zbar, rebuilds chunk order, verifies SHA-256 on the ciphertext, decrypts,
    decompresses, and verifies SHA-256 again on the plaintext.
 
-If the hashes match, you got your file back byte for byte. That is the whole
-proof — no screenshots required.
+If the hashes match, you got your file back byte for byte. No screenshots
+required.
+
+## Measured, not claimed
+
+| test | payload | video | result |
+| --- | --- | --- | --- |
+| the sample CV | 1.9 KB | 4 s, 4 frames | identical |
+| same CV after 720p re-encode | 1.9 KB | 4 s | identical |
+| random blob, max chunk size | 3.0 MB | 31 min, 1879 frames | identical |
+| same blob after 720p re-encode | 3.0 MB | 31 min | identical |
+
+The "720p re-encode" step is `tools/simulate-youtube.sh`: it downscales to
+1280x720 and re-encodes with a normal preset, which is roughly what YouTube does
+to a small channel's upload. Passing that is the reason to believe the real
+upload will work.
+
+Round-trip fidelity does not depend on luck: the ciphertext SHA-256 is checked
+before decryption, and AES-GCM's tag would fail loudly on any bit flip.
 
 ## Quickstart
 
@@ -61,10 +78,6 @@ YouTube re-encodes everything. So simulate it before uploading:
 .venv/bin/python src/extract.py --in out/youtube-sim.mp4 --out out/restored.txt --password '...'
 ```
 
-That script downscales to 720p and re-encodes with a normal preset — roughly
-what YouTube does to a small channel's upload. If the decode survives that and
-the hash matches, the real thing will work too.
-
 ## From YouTube
 
 ```bash
@@ -84,11 +97,12 @@ decoder retries at 2x, but you are burning reliability for nothing.
 | resolution | 1920x1080 |
 | codec | H.264 all-intra, CRF 18 |
 | throughput | ~1.8 KB/s of ciphertext -> 6.6 MB/hour of video |
-| a 2 KB CV | 1 chunk = 1 frame (+ 3 header frames) |
-| a 3 MB random blob | ~1700 frames = ~28 minutes of video |
+| 2 KB CV | 1 chunk = 1 frame (+ 3 header frames) |
+| 3 MB blob | 1876 chunks = 31 minutes of video |
+| filesize | ~160 MB for that 31-minute video (all-intra is expensive) |
 
-Absurd throughput. Genuinely robust. That is the trade, and it is the entire
-joke: it is the slowest possible backup medium that still technically works.
+Monstrous throughput. Genuinely robust. That is the trade, and it is the whole
+joke: it is the slowest backup medium that still technically works.
 
 ## Design decisions worth arguing about
 
@@ -96,34 +110,38 @@ joke: it is the slowest possible backup medium that still technically works.
 in, and shrugs off scaling, blur and JPEG ringing. A hand-rolled colour grid is
 faster and falls apart on the first re-encode.
 
-**base85, not raw bytes.** This one cost an hour of debugging. zbar returns
-decoded data as a UTF-8 string; ciphertext is binary and full of bytes that do
-not survive that. Base85 costs 25% but never has this problem.
+**base85, not raw bytes.** This cost an hour. zbar returns decoded data as a
+UTF-8 string, and ciphertext is full of bytes that do not survive that. Base85
+costs 25% and never has this problem. The bug was invisible in one test and
+corrupted every chunk in another, which is exactly the kind of thing that
+teaches you to check the hash and not the vibes.
 
 **1 fps.** A frame is either readable or it isn't. Nobody watches this at
-30 fps; 1 fps also makes every frame a keyframe for free.
+30 fps, and at 1 fps every frame is naturally a keyframe.
 
-**All-intra H.264.** Deliberately wasteful. In a normal video, a P-frame can be
-useless on its own, and YouTube's re-encode makes that worse. `-g 1` removes
-the entire class of problem.
+**All-intra H.264.** Deliberately wasteful. In a normal video a P-frame can be
+useless on its own, and YouTube's re-encode makes it worse. `-g 1` deletes the
+entire class of problem.
 
 **The header repeats.** A decoder joining mid-video can still learn the chunk
-count and the salts. It is cheap insurance.
+count and salts. It is cheap insurance.
 
 ## Known limits
 
 - A chunk that fails to decode is missing, not repaired. `--repeat 2` writes
-  every chunk twice at the cost of double the length.
-- No erasure or fountain coding. This is the one genuinely good idea left on the
-  table (see below).
-- Font path is hardcoded to DejaVu; falls back to PIL's default font elsewhere.
+  every chunk twice for double the length.
+- No erasure or fountain coding. This is the good idea still on the table (see
+  below).
+- Font path is hardcoded to DejaVu; falls back to PIL's default elsewhere.
+- Decoding 1879 frames takes about a minute on a laptop — OpenCV + zbar, one
+  frame at a time, no parallelism.
 
 ## What would make it actually good
 
-- **Fountain codes.** Generate random XOR combinations instead of fixed chunks.
-  The decoder then needs *any* ~N+k of them rather than *all* of them. This is
-  how real file-transfer-over-camera demos survive a dropped frame.
-- **Four QRs per frame.** 1080p has space; that is 4x throughput for free.
+- **Fountain codes.** Random XOR combinations instead of fixed chunks: the
+  decoder then needs *any* N+k of them rather than *all* of them. This is how
+  real file-transfer-over-camera demos survive a dropped frame.
+- **Four QRs per frame.** 1080p has room; that is 4x throughput for free.
 - **Audio channel.** MFSK plus Reed-Solomon gives a few hundred B/s through a
   speaker and a microphone. Much worse than video, much funnier.
 
